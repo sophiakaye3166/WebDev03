@@ -40,7 +40,7 @@ def get_top_track_and_tags(artist):
     return top_track, [t["name"] for t in tags]
 
 # Streamlit UI
-st.title("🎵 Artist Comparison (Last.fm)")
+st.title("Artist Comparison")
 st.write("Compare two artists by top albums, tags, and most played track.")
 
 artist1 = st.text_input("Enter Artist 1", "Taylor Swift")
@@ -59,7 +59,7 @@ if artist1 and artist2:
                 for album in albums:
                     st.write(f"- {album['name']}")
             else:
-                st.error("❌ Could not retrieve album data. Please check spelling or try a different name.")
+                st.error("Could not retrieve album data. Please check spelling or try a different name.")
 
             tags = get_artist_tags(artist)
             if tags:
