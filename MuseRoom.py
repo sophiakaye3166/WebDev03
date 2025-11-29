@@ -1,75 +1,47 @@
 import streamlit as st
 import requests
-import urllib.parse
+import google.generativeai as genai
+import re
 
-APIK = "7e96bc4d2ecb5f97e26807ee6f2f9048"
+LASTFM_API_KEY = "7e96bc4d2ecb5f97e26807ee6f2f9048"
+GEMINI_API_KEY = "AIzaSyCOjZ3VAstCobzbh4UI8wmxrkasPPddQbw"
 
-def get_top_albums(artist, limit=5):
-    name = urllib.parse.quote(artist.strip())
-    url = f"http://ws.audioscrobbler.com/2.0/?method=artist.gettopalbums&artist={name}&api_key={APIK}&format=json"
-    r = requests.get(url).json()
-    
-    if "topalbums" not in r:
-        st.error(f"API error: {r.get('message', 'No topalbums key found')}")
-        return []
-    
-    albums = r["topalbums"].get("album", [])
-    return albums[:limit] if isinstance(albums, list) else []
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("models/chat-bison-001")
 
-def get_artist_tags(artist):
-    name = urllib.parse.quote(artist.strip())
-    url = f"http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={name}&api_key={APIK}&format=json"
-    r = requests.get(url).json()
-    tags = r.get("artist", {}).get("tags", {}).get("tag", [])
-    return [t["name"] for t in tags]
+st.title("Artist Vibe Generator")
 
-def get_top_track_and_tags(artist):
-    name = urllib.parse.quote(artist.strip())
-    url = f"http://ws.audioscrobbler.com/2.0/?method=artist.gettoptracks&artist={name}&api_key={APIK}&format=json&limit=1"
-    r = requests.get(url).json()
-    
-    try:
-        top_track = r["toptracks"]["track"][0]["name"]
-    except:
-        return None, []
+artist = st.text_input("Enter an artist name:")
+mood = st.selectbox("Choose a mood:", ["Chill", "Hype", "Melancholic", "Romantic", "Energetic"])
 
-    track_name = urllib.parse.quote(top_track)
-    tag_url = f"http://ws.audioscrobbler.com/2.0/?method=track.getTopTags&artist={name}&track={track_name}&api_key={APIK}&format=json"
-    r2 = requests.get(tag_url).json()
-    tags = r2.get("toptags", {}).get("tag", [])
-    return top_track, [t["name"] for t in tags]
+if artist and mood:
+    api_url = f"http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist={artist}&api_key={LASTFM_API_KEY}&format=json"
+    response = requests.get(api_url)
 
-# Streamlit UI
-st.title("Artist Comparison")
-st.write("Compare two artists by top albums, tags, and most played track.")
+    if response.status_code == 200:
+        try:
+            artist_data = response.json()["artist"]
+            raw_bio = artist_data["bio"]["summary"]
+            clean_bio = re.sub(r"<.*?>", "", raw_bio)
+            short_bio = clean_bio[:500]
 
-artist1 = st.text_input("Enter Artist 1", "Taylor Swift")
-artist2 = st.text_input("Enter Artist 2", "Kanye West")
+            tags = [tag["name"] for tag in artist_data["tags"]["tag"]]
+            genres = ", ".join(tags)
+            listeners = artist_data["stats"]["listeners"]
 
-if artist1 and artist2:
-    col1, col2 = st.columns(2)
+            prompt = (
+                f"Write a short, creative description of the artist '{artist}'. "
+                f"Include the mood '{mood}', genres: {genres}, and listener count: {listeners}. "
+                f"Base it on this bio: {short_bio}. Limit to 150 words. Make it casual."
+            )
 
-    for col, artist in zip((col1, col2), (artist1, artist2)):
-        with col:
-            st.header(artist.strip().title())
+            with st.spinner("Generating description..."):
+                result = model.generate_content(prompt)
+                st.subheader("Gemini's Output")
+                st.write(result.text)
 
-            albums = get_top_albums(artist)
-            if albums:
-                st.subheader("Top Albums:")
-                for album in albums:
-                    st.write(f"- {album['name']}")
-            else:
-                st.error("Could not retrieve album data. Please check spelling or try a different name.")
-
-            tags = get_artist_tags(artist)
-            if tags:
-                st.subheader("Artist Tags:")
-                st.write(", ".join(tags[:5]))
-
-            track, track_tags = get_top_track_and_tags(artist)
-            if track:
-                st.subheader("Most Played Track:")
-                st.write(track)
-                if track_tags:
-                    st.subheader("Track Tags:")
-                    st.write(", ".join(track_tags[:5]))
+        except Exception as e:
+            st.error("Error processing the artist data or generating the response.")
+            st.exception(e)
+    else:
+        st.error("Failed to fetch data from Last.fm.")
